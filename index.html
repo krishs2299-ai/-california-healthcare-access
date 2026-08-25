@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>California Healthcare Access Explorer</title>
+<style>
+:root{
+  color-scheme:light dark;
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#f7f8fa;color:#17191f}
+main{max-width:1280px;margin:auto;padding:24px}
+h1{font-size:clamp(28px,4vw,44px);line-height:1.05;letter-spacing:-.035em;margin:0}
+.kicker{font-size:12px;text-transform:uppercase;letter-spacing:.13em;font-weight:800;opacity:.55;margin-bottom:8px}
+.lead{max-width:820px;line-height:1.55;opacity:.72}
+.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(310px,.8fr);gap:18px;align-items:start}
+.card{background:#fff;border:1px solid #dde1e7;border-radius:18px;padding:16px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{font-size:13px;font-weight:750}
+select{width:100%;margin-top:7px;min-height:44px;border-radius:10px;border:1px solid #cfd3da;background:#fff;color:#17191f;padding:0 12px;font-size:16px}
+.mapwrap{position:relative;min-height:520px;overflow:hidden;border-radius:13px;background:#f5f6f8;margin-top:12px}
+svg{width:100%;height:auto;display:block}
+.county{
+  cursor:pointer;
+  vector-effect:non-scaling-stroke;
+  stroke:#ffffff;
+  stroke-width:1.2;
+  stroke-linejoin:round;
+  stroke-linecap:round;
+}
+.county:hover{opacity:.88}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:16px}
+.cell{padding:10px;border-radius:11px;background:#f5f6f8}
+.cell .k{font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.52;font-weight:800}
+.cell .v{margin-top:3px;font-size:15px;font-weight:800}
+.small{font-size:12px;opacity:.62;line-height:1.5}
+.legend{height:10px;flex:1;max-width:300px;border-radius:999px;background:linear-gradient(90deg,#e9eaed,#555963)}
+#selectionNote{
+  margin-top:8px;
+  font-size:12px;
+  opacity:.58;
+}
+@media(prefers-color-scheme:dark){
+  body{background:#111318;color:#f4f5f7}
+  .card{background:#181b21;border-color:#2b2f37}
+  .mapwrap,.cell{background:#12151a}
+  select{background:#111318;color:#f4f5f7;border-color:#3a3e47}
+  .county{stroke:#f5f5f5}
+}
+@media(max-width:760px){
+  main{padding:16px}
+  .layout,.controls{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<main>
+<div class="kicker">California Healthcare Access Project</div>
+<h1>Similar need. Different outcomes.</h1>
+<p class="lead">Explore California counties by healthcare-access measures and compare counties with similar Priority Index scores but sharply different hospital-use outcomes.</p>
+
+<div class="layout">
+<section class="card">
+<div class="controls">
+<label>Map measure
+<select id="metric">
+<option value="priority">Healthcare Access Priority Index</option>
+<option value="stays">Hospital stays — ACS conditions</option>
+<option value="pcp">Primary-care physicians / 100k</option>
+<option value="uninsured">Uninsured under 65</option>
+<option value="income">Median household income</option>
+<option value="age65">Age 65+</option>
+<option value="disability">Disability / functional limitations</option>
+<option value="rural">Rural population</option>
+</select></label>
+
+<label>Featured comparison
+<select id="pair">
+<option value="">No comparison</option>
+<option value="glenn-siskiyou" selected>Glenn ↔ Siskiyou</option>
+<option value="alpine-plumas">Alpine ↔ Plumas</option>
+<option value="sanbenito-sutter">San Benito ↔ Sutter</option>
+<option value="nevada-kern">Nevada ↔ Kern</option>
+<option value="napa-stanislaus">Napa ↔ Stanislaus</option>
+<option value="fresno-humboldt">Fresno ↔ Humboldt</option>
+</select></label>
+</div>
+
+<div id="metricTitle" style="font-weight:800;margin-top:12px"></div>
+<div id="metricSub" class="small"></div>
+<div id="selectionNote">Tap any county to inspect it. Doing so clears the comparison highlight.</div>
+
+<div class="mapwrap">
+<svg id="map" viewBox="0 0 760 650" aria-label="California county map"></svg>
+<div id="loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;opacity:.7">Loading California county boundaries…</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:10px;margin-top:11px;font-size:12px;opacity:.72">
+<span>Lower</span><div class="legend"></div><span>Higher</span><span id="range"></span>
+</div>
+</section>
+
+<aside style="display:grid;gap:14px">
+<section class="card">
+<div class="kicker">Selected county</div>
+<div id="countyName" style="font-size:27px;font-weight:850"></div>
+<div id="rankLine" class="small"></div>
+<div id="metricsGrid" class="grid"></div>
+</section>
+
+<section class="card">
+<div class="kicker">Featured research puzzle</div>
+<div id="pairTitle" style="font-size:20px;font-weight:850"></div>
+<div id="pairSummary" class="small" style="margin-top:6px"></div>
+<div id="pairMetrics" style="margin-top:14px"></div>
+<div class="small" style="margin-top:14px;padding-top:12px;border-top:1px solid #ddd">Exploratory comparison only: a similar composite score does not mean two counties are identical across every underlying measure.</div>
+</section>
+</aside>
+</div>
+
+<p class="small" style="margin-top:15px">Hospital-use measure: age-adjusted hospital stays for ambulatory-care-sensitive conditions per 100,000 Medicare enrollees. The Priority Index summarizes six structural access/vulnerability measures and is exploratory, not causal.</p>
+</main>
+
+<script type="module">
+const DATA=[
+['06001','Alameda County',31.43,2021,122.11,4.64,131375,14.46,24.5,.2,1645483,49],['06003','Alpine County',67.55,968,0,5.51,73355,27.94,27.8,100,1235,5],['06005','Amador County',38.13,2026,69.3,5.5,76870,26.58,28.1,47.5,41557,56],['06007','Butte County',43.45,2360,111.02,6.63,59350,20.66,31.8,16.4,207172,33],['06009','Calaveras County',64.39,1933,45.09,5.71,75912,29.66,29.6,82,46221,10],['06011','Colusa County',63.27,4276,27.4,8.96,67144,16.03,35.2,42.7,21839,11],['06013','Contra Costa County',31.1,2055,94.36,4.88,127161,17.07,25,1.7,1155122,50],['06015','Del Norte County',62.35,2373,62.81,7.81,57922,21.72,37,43.7,27812,13],['06017','El Dorado County',45.18,1986,80.33,4.8,94345,22.87,26.1,30.7,191713,30],['06019','Fresno County',57.17,3264,65.09,10.3,63706,13.25,34.5,11.1,1017162,19],['06021','Glenn County',66.77,3981,14.13,9.28,61486,17.26,35.6,41.2,28917,7],['06023','Humboldt County',56.8,2059,99.25,8.47,57633,20.37,31.9,32.6,135010,21],['06025','Imperial County',60.88,3157,22.9,11.02,55005,13.61,40.4,15.3,179702,17],['06027','Inyo County',36.79,2087,97.31,6.89,66015,24.04,28.7,36.5,18498,41],['06029','Kern County',53.92,3515,46.72,9.65,67762,12.31,34.6,7.2,916108,23],['06031','Kings County',53.75,3240,40.41,9.85,68184,11.15,35,9.9,153443,24],['06033','Lake County',65.32,2171,41.08,8.21,55928,24.55,32.3,40.8,67803,9],['06035','Lassen County',61.12,2614,26.78,6.49,61037,18.39,33.8,72.5,32573,16],['06037','Los Angeles County',40.96,2585,95.65,8.7,87358,15.43,29,.3,9663345,36],['06039','Madera County',62.76,3071,52.4,10.49,69538,14.62,35,38.6,162858,12],['06041','Marin County',31.13,1535,136.24,4.1,138925,22.94,20.7,15.7,252498,46],['06043','Mariposa County',76.01,2624,29.38,6.33,64352,30.99,32.6,100,16919,3],['06045','Mendocino County',62.29,2009,80.17,8.36,62195,25.37,31.7,48.5,90057,14],['06047','Merced County',59.44,2952,43.64,9.85,62815,13.03,35.6,16.2,286461,18],['06049','Modoc County',74.9,2666,70.5,7.23,51996,30.67,31.3,100,8500,4],['06051','Mono County',51.8,1801,98.14,8.16,78795,18.37,25.4,45.3,13247,25],['06053','Monterey County',43.32,2141,71.29,9.32,86587,15.16,29.8,7.4,439035,34],['06055','Napa County',38.73,1673,119.14,5.83,100687,21.14,25,8.5,134300,37],['06057','Nevada County',54.43,1763,86.97,5.84,78241,28.12,28.6,34.6,103487,22],['06059','Orange County',34.72,1805,108.49,6.14,109361,16.41,25.1,0,3135755,44],['06061','Placer County',41.22,1849,101.73,4.6,113163,19.47,23.5,11.5,417772,35],['06063','Plumas County',67.44,2357,72.26,5.38,69034,32.96,28,100,19790,6],['06065','Riverside County',30.99,2468,61.54,7.64,87902,15.17,31,3.8,2492442,51],['06067','Sacramento County',38.53,2489,98.42,6.56,83584,15.4,29.5,2.6,1585055,38],['06069','San Benito County',49.64,1823,36.67,7.34,95430,13.86,30,13.9,68175,27],['06071','San Bernardino County',34.66,2860,62.14,8.21,81167,13.14,32.5,4.1,2195611,45],['06073','San Diego County',34.78,2028,115.97,6.62,100010,15.55,25.6,2.2,3269973,43],['06075','San Francisco County',11.78,2232,172.31,4.21,125456,18.44,21.4,0,808988,58],['06077','San Joaquin County',44.83,2853,55.68,8.15,78575,14.02,34.1,5.7,800965,31],['06079','San Luis Obispo County',27.76,1748,105.31,5.19,88300,22.33,25.2,11.8,282013,53],['06081','San Mateo County',16.22,1611,116.89,4.47,149907,16.79,23,1.1,727209,48],['06083','Santa Barbara County',22.81,1892,111.33,6.07,92233,16.4,26.4,3.3,448229,55],['06085','Santa Clara County',13.59,2039,110.85,4.69,154573,15.41,23.3,1.3,1877592,57],['06087','Santa Cruz County',30.65,1929,105.73,6.18,100540,17.85,27,8,262940,47],['06089','Shasta County',48.93,2787,91.14,6.18,61937,21.78,32.3,19.1,182139,29],['06091','Sierra County',76.25,1719,0,5.93,67675,32.59,30,98.8,3200,2],['06093','Siskiyou County',66.3,1536,68.67,6.84,55613,28.69,31.1,70.9,43741,8],['06095','Solano County',35.67,2454,71.98,5.26,104236,16.42,29.6,3.4,448747,42],['06097','Sonoma County',36.9,1894,127.72,5.13,99962,21.39,25.2,13.3,481812,40],['06099','Stanislaus County',38.27,3065,54.06,7.84,74739,14.46,34.4,5.5,551275,39],['06101','Sutter County',49.62,2932,62.27,7.67,68699,17.49,32.2,8.1,99560,28],['06103','Tehama County',61.77,2236,55.2,6.99,55641,20.49,33.8,57,65829,15],['06105','Trinity County',80.23,2293,12.67,6.2,52079,32.11,32.7,100,15670,1],['06107','Tulare County',44.55,3465,45.67,10.04,57831,12.17,36.1,9.8,477544,32],['06109','Tuolumne County',56.91,2293,96.76,5.85,68765,29,28.8,55.6,55810,20],['06111','Ventura County',28.5,1828,103.66,6.02,110674,17.35,26,2,832605,52],['06113','Yolo County',24.31,1749,113.81,4.69,86274,14.04,25.3,7.1,220544,54],['06115','Yuba County',51.58,3045,35.31,8.16,67484,13.88,35,9.8,84959,26]
+].map(x=>({fips:x[0],county:x[1],priority:x[2],stays:x[3],pcp:x[4],uninsured:x[5],income:x[6],age65:x[7],disability:x[8],rural:x[9],population:x[10],rank:x[11]}));
+
+const byFips=new Map(DATA.map(d=>[d.fips,d]));
+const byName=new Map(DATA.map(d=>[d.county.replace(' County',''),d]));
+
+const PAIRS={
+'glenn-siskiyou':['Glenn','Siskiyou'],
+'alpine-plumas':['Alpine','Plumas'],
+'sanbenito-sutter':['San Benito','Sutter'],
+'nevada-kern':['Nevada','Kern'],
+'napa-stanislaus':['Napa','Stanislaus'],
+'fresno-humboldt':['Fresno','Humboldt']
+};
+
+const metrics={
+priority:{label:'Healthcare Access Priority Index',sub:'Higher = greater structural access/vulnerability priority',fmt:v=>v.toFixed(1)},
+stays:{label:'Hospital stays — ambulatory-care-sensitive conditions',sub:'Age-adjusted stays per 100,000 Medicare enrollees',fmt:v=>Math.round(v).toLocaleString()},
+pcp:{label:'Primary-care physicians / 100k',sub:'Higher values indicate greater physician supply',fmt:v=>v.toFixed(1)},
+uninsured:{label:'Uninsured under age 65',sub:'Percent of residents under 65 without insurance',fmt:v=>v.toFixed(1)+'%'},
+income:{label:'Median household income',sub:'County median household income',fmt:v=>'$'+Math.round(v).toLocaleString()},
+age65:{label:'Population age 65+',sub:'Percent of county population age 65 or older',fmt:v=>v.toFixed(1)+'%'},
+disability:{label:'Disability / functional limitations',sub:'Percent represented by the project disability measure',fmt:v=>v.toFixed(1)+'%'},
+rural:{label:'Rural population',sub:'Percent of county population classified as rural',fmt:v=>v.toFixed(1)+'%'}
+};
+
+const metricSel=document.querySelector('#metric');
+const pairSel=document.querySelector('#pair');
+const title=document.querySelector('#metricTitle');
+const sub=document.querySelector('#metricSub');
+const range=document.querySelector('#range');
+const nameEl=document.querySelector('#countyName');
+const rankEl=document.querySelector('#rankLine');
+const grid=document.querySelector('#metricsGrid');
+const pairTitle=document.querySelector('#pairTitle');
+const pairSummary=document.querySelector('#pairSummary');
+const pairMetrics=document.querySelector('#pairMetrics');
+
+const cell=(k,v)=>`<div class="cell"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+
+function showCounty(d){
+  nameEl.textContent=d.county;
+  rankEl.textContent=`Priority rank ${d.rank} of 58 · Population ${d.population.toLocaleString()}`;
+  grid.innerHTML=
+    cell('Priority Index',d.priority.toFixed(1))+
+    cell('Hospital stays',d.stays.toLocaleString()+' /100k')+
+    cell('PCPs /100k',d.pcp.toFixed(1))+
+    cell('Uninsured',d.uninsured.toFixed(1)+'%')+
+    cell('Median income','$'+d.income.toLocaleString())+
+    cell('Age 65+',d.age65.toFixed(1)+'%')+
+    cell('Disability',d.disability.toFixed(1)+'%')+
+    cell('Rural',d.rural.toFixed(1)+'%');
+}
+
+function currentPair(){
+  if(!pairSel.value) return null;
+  const n=PAIRS[pairSel.value];
+  return [byName.get(n[0]),byName.get(n[1])];
+}
+
+function updatePairPanel(){
+  const pair=currentPair();
+  if(!pair){
+    pairTitle.textContent='No comparison selected';
+    pairSummary.textContent='Choose a featured comparison above to highlight two counties.';
+    pairMetrics.innerHTML='';
+    if(g) draw();
+    return;
+  }
+  const [a,b]=pair;
+  pairTitle.textContent=`${a.county.replace(' County','')} ↔ ${b.county.replace(' County','')}`;
+  pairSummary.innerHTML=
+    `Priority scores differ by only <strong>${Math.abs(a.priority-b.priority).toFixed(2)} points</strong>, while hospital-stay rates differ by <strong>${Math.abs(a.stays-b.stays).toLocaleString()} per 100k</strong>.`;
+  pairMetrics.innerHTML=`<div style="display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px;font-size:12px">
+    <div></div><b>${a.county.replace(' County','')}</b><b>${b.county.replace(' County','')}</b>
+    <span>Priority</span><span>${a.priority.toFixed(2)}</span><span>${b.priority.toFixed(2)}</span>
+    <span>Hospital stays</span><span>${a.stays.toLocaleString()}</span><span>${b.stays.toLocaleString()}</span>
+    <span>PCPs /100k</span><span>${a.pcp.toFixed(1)}</span><span>${b.pcp.toFixed(1)}</span>
+    <span>Uninsured</span><span>${a.uninsured.toFixed(1)}%</span><span>${b.uninsured.toFixed(1)}%</span>
+    <span>Income</span><span>$${a.income.toLocaleString()}</span><span>$${b.income.toLocaleString()}</span>
+    <span>Disability</span><span>${a.disability.toFixed(1)}%</span><span>${b.disability.toFixed(1)}%</span>
+    <span>Rural</span><span>${a.rural.toFixed(1)}%</span><span>${b.rural.toFixed(1)}%</span>
+  </div>`;
+  if(g) draw();
+}
+
+let d3,topo,g,highlightLayer,selected='06021';
+
+async function init(){
+  try{
+    [d3,topo]=await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm'),
+      import('https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm')
+    ]);
+
+    const {default:us}=await import('https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/counties-10m.json/+esm');
+    const features=topo.feature(us,us.objects.counties).features
+      .filter(f=>String(f.id).padStart(5,'0').startsWith('06'));
+
+    const svg=d3.select('#map');
+    const projection=d3.geoMercator()
+      .fitExtent([[44,28],[716,622]],{type:'FeatureCollection',features});
+    const path=d3.geoPath(projection);
+
+    g=svg.append('g').attr('class','base-counties');
+
+    g.selectAll('path')
+      .data(features)
+      .join('path')
+      .attr('class','county')
+      .attr('d',path)
+      .on('click',(ev,f)=>{
+        selected=String(f.id).padStart(5,'0');
+        const d=byFips.get(selected);
+        if(d) showCounty(d);
+
+        // IMPORTANT: clicking a county exits comparison mode
+        pairSel.value='';
+        updatePairPanel();
+        draw();
+      });
+
+    // Separate overlay layer avoids mangling the normal county boundaries.
+    highlightLayer=svg.append('g')
+      .attr('class','highlight-layer')
+      .style('pointer-events','none');
+
+    highlightLayer.selectAll('path')
+      .data(features)
+      .join('path')
+      .attr('d',path)
+      .attr('fill','none')
+      .attr('stroke-linejoin','round')
+      .attr('stroke-linecap','round')
+      .attr('vector-effect','non-scaling-stroke');
+
+    document.querySelector('#loading').style.display='none';
+    draw();
+  }catch(e){
+    document.querySelector('#loading').textContent='Map boundaries could not load.';
+    console.error(e);
+  }
+}
+
+function draw(){
+  const key=metricSel.value;
+  const m=metrics[key];
+  const vals=DATA.map(d=>d[key]);
+  const min=d3.min(vals),max=d3.max(vals);
+  const scale=d3.scaleSequential()
+    .domain([min,max])
+    .interpolator(d3.interpolateRgb('#e9eaed','#555963'));
+
+  title.textContent=m.label;
+  sub.textContent=m.sub;
+  range.textContent=`${m.fmt(min)} – ${m.fmt(max)}`;
+
+  g.selectAll('path')
+    .attr('fill',f=>{
+      const d=byFips.get(String(f.id).padStart(5,'0'));
+      return d?scale(d[key]):'#d9dbe0';
+    })
+    .attr('opacity',1);
+
+  const pair=currentPair();
+  const pairIds=pair ? new Set(pair.map(d=>d.fips)) : new Set();
+
+  // Clean base borders never change.
+  g.selectAll('path')
+    .attr('stroke-width',1.2);
+
+  // Highlight overlays only; no fat stroke on the base map itself.
+  highlightLayer.selectAll('path')
+    .attr('display','none');
+
+  if(pair){
+    highlightLayer.selectAll('path')
+      .filter(f=>pairIds.has(String(f.id).padStart(5,'0')))
+      .attr('display',null)
+      .attr('stroke','#000000')
+      .attr('stroke-width',2.4);
+  }else if(selected){
+    highlightLayer.selectAll('path')
+      .filter(f=>String(f.id).padStart(5,'0')===selected)
+      .attr('display',null)
+      .attr('stroke','#000000')
+      .attr('stroke-width',2.4);
+  }
+
+  // Slight fill emphasis for comparison pair so we don't need chunky borders.
+  if(pair){
+    g.selectAll('path')
+      .attr('opacity',f=>{
+        const id=String(f.id).padStart(5,'0');
+        return pairIds.has(id) ? 1 : .92;
+      });
+  }
+}
+
+metricSel.addEventListener('change',()=>g&&draw());
+
+pairSel.addEventListener('change',()=>{
+  const pair=currentPair();
+  if(pair){
+    selected=null;
+    showCounty(pair[0]);
+  }
+  updatePairPanel();
+  if(g) draw();
+});
+
+showCounty(byName.get('Glenn'));
+updatePairPanel();
+init();
+</script>
+</body>
+</html>
